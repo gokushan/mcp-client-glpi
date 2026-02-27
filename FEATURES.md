@@ -58,12 +58,18 @@ Este endpoint consulta al servidor MCP las rutas físicas en el host de las carp
 curl -X GET http://localhost:8000/folders
 ```
 
-### Respuesta esperada:
 ```json
 {
-  "input_folders": ["/ruta/host/entrada"],
-  "processed_folder": "/ruta/host/procesado",
-  "error_folder": "/ruta/host/error"
+  "to_process": [
+    "/ruta/host/entrada"
+  ],
+  "processed": [
+    "/ruta/host/procesados"
+  ],
+  "errors": [
+    "/ruta/host/errores"
+  ],
+  "success": true
 }
 ```
 
@@ -88,14 +94,34 @@ curl -X POST http://localhost:8000/processcontract
   "results": [
     {
       "file": "contrato_1.pdf",
+      "processed_path": "/ruta/host/procesados/contrato_1.pdf",
       "status": "success",
       "contract_id": 123,
-      ...
+      "contract_name": "Contrato Ejemplo",
+      "document_attached": true,
+      "error": null,
+      "error_code": null,
+      "error_description": null
     }
   ],
   "summary_text": "Procesamiento completado con éxito..."
 }
 ```
+
+---
+
+## 5. Códigos de Error del Servidor MCP
+
+Cuando ocurre un fallo durante el procesamiento o listado de archivos, el servidor MCP proporciona un código de error estandarizado (`error_code`) en los resultados:
+
+| Código | Descripción Interna | Significado |
+| :--- | :--- | :--- |
+| `100` | Malformed or unreadable file | El archivo está corrupto, no se puede leer o su formato es irreconocible. |
+| `101` | File with possible prompt injection | Se detectó un posible intento de inyección de código (Prompt Injection) en el archivo. |
+| `102` | Extension not allowed | La extensión del archivo no está permitida en la configuración. |
+| `103` | Read path not allowed | Intento de acceso a un directorio denegado o no autorizado. |
+| `104` | Path doesn't exist | La ruta proporcionada o el directorio no existe. |
+| `105` | LLM timeout or cancelled | La solicitud al motor de lenguaje (LLM) ha superado el tiempo límite o ha sido cancelada. |
 
 ---
 
@@ -105,5 +131,5 @@ curl -X POST http://localhost:8000/processcontract
 | :--- | :--- | :--- |
 | `GET` | `/healthcheck` | Estado del cliente y conexión con el servidor MCP. |
 | `GET` | `/tools` | Lista de herramientas disponibles en el servidor. |
-| `GET` | `/folders` | Rutas de carpetas (entrada, procesados, errores) en el host. |
+| `GET` | `/folders` | Rutas de carpetas (entrada, procesados, errores). |
 | `POST` | `/processcontract` | Ejecuta el procesamiento de contratos. |
