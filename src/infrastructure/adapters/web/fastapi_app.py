@@ -1,12 +1,26 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
 from src.application.use_cases import ProcessContractsUseCase, ListToolsUseCase, InitializeMCPUseCase, GetFoldersInfoUseCase
 from src.infrastructure.adapters.mcp.client import MCPServerAdapter
 from src.infrastructure.config import settings
 import logging
+import json
+from typing import Any
 
 # Configure logger
 logging.basicConfig(level=settings.log_level)
 logger = logging.getLogger(__name__)
+
+class PrettyJSONResponse(JSONResponse):
+    """Custom JSONResponse that returns indented JSON."""
+    def render(self, content: Any) -> bytes:
+        return json.dumps(
+            content,
+            ensure_ascii=False,
+            allow_nan=False,
+            indent=4,
+            separators=(", ", ": "),
+        ).encode("utf-8")
 
 app = FastAPI(title="MCP Client GLPI API")
 
@@ -30,7 +44,7 @@ async def startup_event():
             # We don't necessarily want to stop the app from starting, 
             # but it will be logged.
 
-@app.post("/processcontract")
+@app.post("/processcontract", response_class=PrettyJSONResponse)
 async def process_contract():
     """
     Endpoint to trigger batch contract processing.
@@ -44,7 +58,7 @@ async def process_contract():
         logger.error(f"Error in /processcontract: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/tools")
+@app.get("/tools", response_class=PrettyJSONResponse)
 async def list_tools():
     """Endpoint to list available tools from the MCP Server."""
     try:
@@ -55,7 +69,7 @@ async def list_tools():
         logger.error(f"Error in /tools: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/folders")
+@app.get("/folders", response_class=PrettyJSONResponse)
 async def list_folders():
     """Endpoint to get specialized folders info from the MCP Server."""
     try:
@@ -65,19 +79,22 @@ async def list_folders():
         logger.error(f"Error in /folders: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/healthcheck")
+@app.get("/healthcheck", response_class=PrettyJSONResponse)
 async def healthcheck():
     """
     Enhanced health check that verifies connectivity with the MCP Server.
     """
     try:
-        tools = await list_tools_use_case.execute()
+        folders_info = await folders_use_case.execute()
         return {
             "status": "ok",
             "mcp_server": {
                 "connected": True,
                 "url": settings.mcp_server_url,
-                "available_tools": [t.name for t in tools if hasattr(t, 'name')]
+                "folders_status": {
+                    "to_process_count": len(folders_info.to_process),
+                    "success": folders_info.success
+                }
             }
         }
     except Exception as e:

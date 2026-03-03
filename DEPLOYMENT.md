@@ -2,6 +2,14 @@
 
 Docker Compose es la forma recomendada de desplegar el cliente MCP, especialmente si forma parte de un ecosistema de microservicios.
 
+## Requisitos Previos de Ejecución
+
+Antes de iniciar el `mcp-client`, asegúrate de cumplir con los siguientes requisitos:
+
+1.  **MCP Server GLPI**: Debe estar arrancado y accesible en la red (configurado mediante `MCP_SERVER_URL` en el archivo `.env`).
+2.  **Ollama**: El servicio de Ollama debe estar disponible y en ejecución.
+3.  **Modelo de Ollama**: Debe haber al menos un modelo descargado y disponible en Ollama (por ejemplo, `llama3` o `mistral`). Puedes verificarlo con `ollama list`.
+
 ## Configuración
 
 El archivo `docker-compose.yml` en la raíz del proyecto está configurado para:

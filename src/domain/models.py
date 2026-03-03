@@ -9,6 +9,8 @@ class ProcessResult(BaseModel):
     contract_name: Optional[str] = None
     document_attached: bool = False
     error: Optional[str] = None
+    error_code: Optional[int] = None
+    error_description: Optional[str] = None
 
 class BatchResponse(BaseModel):
     results: List[ProcessResult]
@@ -18,4 +20,5 @@ class FoldersResponse(BaseModel):
     to_process: List[str]
     processed: List[str]
     errors: List[str]
+    errors_details: Optional[List[dict[str, Any]]] = None
     success: bool
