@@ -9,6 +9,7 @@ Para facilitar el uso y mantenimiento del proyecto, consulta los siguientes docu
 - **[Guía de Ejecución](RUNNING.md)**: Cómo levantar el entorno virtual, instalar dependencias y ejecutar la app.
 - **[Funcionalidades y Pruebas](FEATURES.md)**: Listado de endpoints disponibles y ejemplos de `curl` para probarlos.
 - **[Arquitectura](ARCHITECTURE.md)**: Detalles sobre el diseño basado en arquitectura hexagonal y puertos/adaptadores.
+- **[Contexto para Agentes](agents.md)**: Resumen del proyecto y arquitectura diseñado específicamente para IAs.
 - **[Despliegue con Docker](DEPLOYMENT.md)**: Instrucciones para entornos de producción y contenedores.
 
 ## Inicio Rápido
