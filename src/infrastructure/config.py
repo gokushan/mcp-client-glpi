@@ -5,8 +5,11 @@ class Settings(BaseSettings):
     mcp_tool_name: str = "tool_batch_contracts"
     mcp_folders_tool_name: str = "list_folders"
     mcp_initialize_on_startup: bool = True
+    app_host: str = "0.0.0.0"
     app_port: int = 8000
     log_level: str = "INFO"
+    # Comma-separated or list of allowed IPs. Default "*" allow all for backward compatibility or ease.
+    allowed_ips: list[str] = ["*"]
 
     model_config = SettingsConfigDict(
         env_file=".env",

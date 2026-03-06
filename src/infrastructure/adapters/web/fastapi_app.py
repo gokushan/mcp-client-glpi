@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from src.application.use_cases import ProcessContractsUseCase, ListToolsUseCase, InitializeMCPUseCase, GetFoldersInfoUseCase
 from src.infrastructure.adapters.mcp.client import MCPServerAdapter
@@ -23,6 +23,26 @@ class PrettyJSONResponse(JSONResponse):
         ).encode("utf-8")
 
 app = FastAPI(title="MCP Client GLPI API")
+
+@app.middleware("http")
+async def ip_restriction_middleware(request: Request, call_next):
+    """Restricts API access based on client IP addresses."""
+    # Check if restriction is disabled or if IP is allowed
+    allowed = settings.allowed_ips
+    
+    if "*" in allowed:
+        return await call_next(request)
+    
+    client_ip = request.client.host
+    
+    if client_ip not in allowed:
+        logger.warning(f"Access denied for unauthorized IP: {client_ip}")
+        return PrettyJSONResponse(
+            status_code=403,
+            content={"detail": "Forbidden: IP address not authorized."}
+        )
+        
+    return await call_next(request)
 
 # Dependency Injection
 mcp_adapter = MCPServerAdapter()

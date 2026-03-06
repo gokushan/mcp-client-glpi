@@ -6,7 +6,7 @@ def main():
     """Main entry point for the MCP Client."""
     uvicorn.run(
         app, 
-        host="0.0.0.0", 
+        host=settings.app_host, 
         port=settings.app_port
     )
 
