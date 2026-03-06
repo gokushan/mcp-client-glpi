@@ -54,7 +54,9 @@ docker compose up -d --build
 Asegúrate de que tu archivo `.env` contenga los valores correctos antes de levantar el compose:
 
 - `MCP_SERVER_URL`: Dirección completa del servidor MCP (ej. `http://192.168.1.10:8081/mcp`).
+- `APP_HOST`: Interfaz de red donde escuchará el servidor (ej: `0.0.0.0` para todas o `127.0.0.1` solo local).
 - `APP_PORT`: Puerto donde escuchará FastAPI (por defecto `8000`).
+- `ALLOWED_IPS`: Filtro de seguridad por IP. Solo las IPs en esta lista podrán conectar (ej: `["127.0.0.1", "10.0.0.5"]`). Usa `["*"]` para permitir todas.
 - `APP_VERSION`: Versión de la aplicación (por defecto `0.1.0`).
 - `LOG_LEVEL`: Nivel de detalle de los logs (ej. `INFO`, `DEBUG`, `ERROR`).
-- `mcp_initialize_on_startup`: `True` para validar la conexión al arrancar.
+- `MCP_INITIALIZE_ON_STARTUP`: `True` para validar la conexión al servidor MCP nada más arrancar.
