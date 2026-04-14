@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from .models import BatchResponse, FoldersResponse
-from typing import List, Any
+from .gmail_models import FetchUnreadResult, MarkReadResult
+from typing import List, Any, Optional
 
 class ContractServicePort(ABC):
     @abstractmethod
@@ -21,4 +22,16 @@ class ContractServicePort(ABC):
     @abstractmethod
     async def get_folders_info(self) -> FoldersResponse:
         """Port to get folder information from the MCP Server."""
+        pass
+
+
+class GmailServicePort(ABC):
+    @abstractmethod
+    async def fetch_latest_unread(self, dest_folder: Optional[str] = None) -> FetchUnreadResult:
+        """Fetch oldest unread email and download allowed attachments. Does not mark as read."""
+        pass
+
+    @abstractmethod
+    async def mark_as_read(self, email_id: str) -> MarkReadResult:
+        """Remove the UNREAD label from a specific email."""
         pass

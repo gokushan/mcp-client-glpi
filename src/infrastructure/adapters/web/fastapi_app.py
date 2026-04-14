@@ -1,11 +1,36 @@
+import asyncio
+from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from src.application.use_cases import ProcessContractsUseCase, ListToolsUseCase, InitializeMCPUseCase, GetFoldersInfoUseCase
+from src.application.gmail_orchestrator import GmailBatchOrchestratorUseCase
+from src.domain.gmail_models import GmailBatchResult, GmailBatchStage
 from src.infrastructure.adapters.mcp.client import MCPServerAdapter
+from src.infrastructure.adapters.mcp.gmail_client import MCPGmailAdapter
 from src.infrastructure.config import settings
 import logging
 import json
 from typing import Any
+
+
+_STAGE_MESSAGES: dict[GmailBatchStage, str] = {
+    GmailBatchStage.ANALYZING_GMAIL: "Analizando bandeja de Gmail…",
+    GmailBatchStage.DOWNLOADING: "Descargando adjuntos del correo…",
+    GmailBatchStage.PROCESSING_LLM: "Procesando contratos con el modelo de lenguaje…",
+    GmailBatchStage.UPLOADING_GLPI: "Subiendo resultados a GLPI…",
+    GmailBatchStage.DONE: "Proceso completado",
+    GmailBatchStage.ERROR: "Se produjo un error durante el proceso",
+    GmailBatchStage.BUSY: "Ya hay un procesamiento en curso",
+}
+
+
+def _gmail_stage_message(result: GmailBatchResult) -> str:
+    base = _STAGE_MESSAGES.get(result.stage, result.stage.value)
+    if result.stage == GmailBatchStage.ERROR and result.error:
+        return f"{base}: {result.error}"
+    if result.stage == GmailBatchStage.DONE and result.email is None:
+        return "No hay correos nuevos pendientes"
+    return base
 
 # Configure logger
 logging.basicConfig(level=settings.log_level)
@@ -50,6 +75,15 @@ process_use_case = ProcessContractsUseCase(mcp_adapter)
 list_tools_use_case = ListToolsUseCase(mcp_adapter)
 init_use_case = InitializeMCPUseCase(mcp_adapter)
 folders_use_case = GetFoldersInfoUseCase(mcp_adapter)
+
+mcp_gmail_adapter = MCPGmailAdapter()
+gmail_batch_lock = asyncio.Lock()
+gmail_orchestrator_use_case = GmailBatchOrchestratorUseCase(
+    gmail_service=mcp_gmail_adapter,
+    process_contracts=process_use_case,
+    lock=gmail_batch_lock,
+    dest_folder=settings.gmail_dest_folder,
+)
 
 @app.on_event("startup")
 async def startup_event():
@@ -98,6 +132,92 @@ async def list_folders():
     except Exception as e:
         logger.error(f"Error in /folders: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+_STATIC_DIR = Path(__file__).parent / "static"
+
+
+@app.get("/mcpserver", include_in_schema=False)
+@app.get("/mcpserver/", include_in_schema=False)
+async def mcpserver_ui():
+    """Serve the Gmail batch UI (Alpine + Tailwind via CDN)."""
+    html = (_STATIC_DIR / "gmailserver.html").read_text(encoding="utf-8")
+    html = html.replace("__GLPI_WEB_URL__", settings.glpi_web_url.rstrip("/"))
+    return HTMLResponse(html)
+
+
+@app.post("/gmail-batch", response_class=PrettyJSONResponse)
+async def gmail_batch():
+    """Trigger the Gmail → GLPI orchestrated batch. Returns the final result."""
+    try:
+        logger.info("Received request to /gmail-batch")
+        result = await gmail_orchestrator_use_case.execute()
+        if result.stage == GmailBatchStage.BUSY:
+            return PrettyJSONResponse(
+                status_code=409,
+                content=result.model_dump(mode="json", exclude_none=True),
+            )
+        return result
+    except Exception as e:
+        logger.error(f"Error in /gmail-batch: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/gmail-batch/stream")
+async def gmail_batch_stream():
+    """Stream Gmail batch progress as Server-Sent Events."""
+    logger.info("Received request to /gmail-batch/stream")
+    queue: asyncio.Queue = asyncio.Queue()
+    sentinel = object()
+
+    async def progress_cb(result: GmailBatchResult) -> None:
+        await queue.put(result)
+
+    async def runner() -> None:
+        try:
+            await gmail_orchestrator_use_case.execute(progress_cb=progress_cb)
+        except Exception as exc:
+            logger.exception("gmail-batch stream runner failed")
+            await queue.put(
+                GmailBatchResult(
+                    stage=GmailBatchStage.ERROR,
+                    error=str(exc),
+                    error_code="stream_runner_failed",
+                )
+            )
+        finally:
+            await queue.put(sentinel)
+
+    task = asyncio.create_task(runner())
+
+    async def event_stream():
+        try:
+            while True:
+                item = await queue.get()
+                if item is sentinel:
+                    break
+                payload = {
+                    "stage": item.stage.value,
+                    "message": _gmail_stage_message(item),
+                    "data": item.model_dump(mode="json", exclude_none=True),
+                }
+                yield (
+                    f"event: progress\n"
+                    f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                )
+        finally:
+            if not task.done():
+                task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
 
 @app.get("/healthcheck", response_class=PrettyJSONResponse)
 async def healthcheck():

@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GLPI MCP — Procesamiento de correos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen">
+<main class="max-w-3xl mx-auto p-6" x-data="gmailBatchApp()" x-init="init()">
+    <header class="mb-6">
+        <h1 class="text-2xl font-semibold">GLPI MCP — Procesamiento de correos</h1>
+        <p class="text-sm text-slate-500">
+            Dispara la lectura del correo más antiguo sin leer y su procesamiento en GLPI.
+        </p>
+    </header>
+
+    <section class="bg-white rounded-lg shadow p-5 mb-6">
+        <div class="flex items-center justify-between gap-4">
+            <div>
+                <p class="font-medium">Bandeja de entrada</p>
+                <p class="text-sm text-slate-500" x-text="headline"></p>
+            </div>
+            <button
+                type="button"
+                class="px-5 py-2 rounded-md bg-indigo-600 text-white font-medium shadow hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed"
+                :disabled="running"
+                @click="run()">
+                <span x-show="!running">Procesar bandeja</span>
+                <span x-show="running">Procesando…</span>
+            </button>
+        </div>
+    </section>
+
+    <section x-show="stageHistory.length > 0" class="bg-white rounded-lg shadow p-5 mb-6">
+        <h2 class="font-semibold mb-3">Progreso</h2>
+        <ul class="space-y-2">
+            <template x-for="(step, idx) in stageHistory" :key="idx">
+                <li class="flex items-center gap-3 text-sm">
+                    <span
+                        class="inline-block w-2.5 h-2.5 rounded-full"
+                        :class="{
+                            'bg-emerald-500': step.stage === 'done',
+                            'bg-rose-500': step.stage === 'error',
+                            'bg-amber-500': step.stage === 'busy',
+                            'bg-indigo-500': !['done','error','busy'].includes(step.stage)
+                        }"></span>
+                    <span class="font-mono text-xs text-slate-500 w-40" x-text="step.stage"></span>
+                    <span x-text="step.message"></span>
+                </li>
+            </template>
+        </ul>
+    </section>
+
+    <section x-show="error" class="bg-rose-50 border border-rose-200 text-rose-800 rounded-lg p-4 mb-6">
+        <p class="font-semibold">Se produjo un error</p>
+        <p class="text-sm" x-text="error"></p>
+    </section>
+
+    <section x-show="result" class="bg-white rounded-lg shadow p-5">
+        <h2 class="font-semibold mb-3">Resultado</h2>
+
+        <template x-if="result && result.email">
+            <div class="mb-4 text-sm">
+                <p><span class="font-medium">Remitente:</span> <span x-text="result.email.sender"></span></p>
+                <p><span class="font-medium">Asunto:</span> <span x-text="result.email.subject"></span></p>
+                <p class="text-slate-500">
+                    Descargados
+                    <span x-text="result.attachments_downloaded ?? 0"></span>
+                    · Rechazados
+                    <span x-text="result.attachments_rejected ?? 0"></span>
+                </p>
+            </div>
+        </template>
+
+        <template x-if="result && result.batch && result.batch.results && result.batch.results.length > 0">
+            <table class="w-full text-sm border-collapse">
+                <thead class="text-left text-slate-500">
+                    <tr>
+                        <th class="border-b py-2 pr-2">Archivo</th>
+                        <th class="border-b py-2 pr-2">Estado</th>
+                        <th class="border-b py-2 pr-2">Contrato</th>
+                        <th class="border-b py-2 pr-2">Doc. adjunto</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="row in result.batch.results" :key="row.file">
+                        <tr>
+                            <td class="border-b py-2 pr-2 font-mono text-xs" x-text="row.file"></td>
+                            <td class="border-b py-2 pr-2">
+                                <span
+                                    class="px-2 py-0.5 rounded text-xs"
+                                    :class="row.status === 'success' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'"
+                                    x-text="row.status"></span>
+                            </td>
+                            <td class="border-b py-2 pr-2">
+                                <template x-if="row.contract_id && glpiWebUrl">
+                                    <a
+                                        :href="`${glpiWebUrl}/front/contract.form.php?id=${row.contract_id}`"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        class="text-indigo-600 hover:underline"
+                                        x-text="`#${row.contract_id}`"></a>
+                                </template>
+                                <template x-if="row.contract_id && !glpiWebUrl">
+                                    <span x-text="row.contract_id"></span>
+                                </template>
+                                <template x-if="!row.contract_id">
+                                    <span>—</span>
+                                </template>
+                            </td>
+                            <td class="border-b py-2 pr-2" x-text="row.document_attached ? 'sí' : 'no'"></td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </template>
+
+        <template x-if="result && result.batch && result.batch.summary_text">
+            <p class="mt-4 text-sm text-slate-600" x-text="result.batch.summary_text"></p>
+        </template>
+
+        <template x-if="result && 'marked_as_read' in result && result.marked_as_read !== null">
+            <p class="mt-3 text-xs text-slate-500">
+                Correo marcado como leído:
+                <span x-text="result.marked_as_read ? 'sí' : 'no'"></span>
+            </p>
+        </template>
+    </section>
+</main>
+
+<script>
+function gmailBatchApp() {
+    return {
+        running: false,
+        stageHistory: [],
+        result: null,
+        error: null,
+        headline: 'Listo para procesar el correo más antiguo sin leer.',
+        eventSource: null,
+        glpiWebUrl: '__GLPI_WEB_URL__',
+
+        init() {
+            window.addEventListener('beforeunload', () => this._close());
+        },
+
+        run() {
+            if (this.running) return;
+            this.running = true;
+            this.stageHistory = [];
+            this.result = null;
+            this.error = null;
+            this.headline = 'Procesando…';
+
+            const es = new EventSource('/gmail-batch/stream');
+            this.eventSource = es;
+
+            es.addEventListener('progress', (ev) => {
+                let payload;
+                try {
+                    payload = JSON.parse(ev.data);
+                } catch (_) {
+                    return;
+                }
+                this.stageHistory.push({
+                    stage: payload.stage,
+                    message: payload.message,
+                });
+                if (['done', 'error', 'busy'].includes(payload.stage)) {
+                    this.result = payload.data || null;
+                    if (payload.stage === 'error') {
+                        this.error = payload.data?.error || payload.message;
+                        this.headline = 'Se produjo un error durante el último intento.';
+                    } else if (payload.stage === 'busy') {
+                        this.error = payload.message;
+                        this.headline = 'Otra ejecución sigue en curso.';
+                    } else {
+                        this.headline = payload.data?.email
+                            ? 'Último correo procesado correctamente.'
+                            : 'No había correos nuevos pendientes.';
+                    }
+                    this._close();
+                }
+            });
+
+            es.onerror = () => {
+                if (!this.running) return;
+                this.error = 'Error de conexión con el servidor.';
+                this.headline = 'No se pudo completar la conexión con el servidor.';
+                this._close();
+            };
+        },
+
+        _close() {
+            if (this.eventSource) {
+                this.eventSource.close();
+                this.eventSource = null;
+            }
+            this.running = false;
+        },
+    };
+}
+</script>
+</body>
+</html>
